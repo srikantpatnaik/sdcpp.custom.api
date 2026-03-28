@@ -427,9 +427,12 @@ int main(int argc, const char** argv) {
             std::string prompt        = j.value("prompt", "");
             int n                     = std::max(1, j.value("n", 1));
             std::string size          = j.value("size", "");
-            std::string output_format = j.value("output_format", "png");
-            int output_compression    = j.value("output_compression", 100);
-            int width                 = default_gen_params.width > 0 ? default_gen_params.width : 512;
+            std::string output_format    = j.value("output_format", "png");
+            int output_compression       = j.value("output_compression", 100);
+            std::string response_format  = j.value("response_format", "base64");
+            std::string output_filename  = j.value("output_filename", "");
+            bool do_upscale             = j.value("upscale", false);
+            int width                    = default_gen_params.width > 0 ? default_gen_params.width : 512;
             int height                = default_gen_params.width > 0 ? default_gen_params.height : 512;
             if (!size.empty()) {
                 auto pos = size.find('x');
@@ -453,6 +456,11 @@ int main(int argc, const char** argv) {
             if (output_format != "png" && output_format != "jpeg") {
                 res.status = 400;
                 res.set_content(R"({"error":"invalid output_format, must be one of [png, jpeg]"})", "application/json");
+                return;
+            }
+            if (response_format != "base64" && response_format != "url") {
+                res.status = 400;
+                res.set_content(R"({"error":"invalid response_format, must be one of [base64, url]"})", "application/json");
                 return;
             }
             if (n <= 0)
@@ -536,6 +544,58 @@ int main(int argc, const char** argv) {
                 std::lock_guard<std::mutex> lock(sd_ctx_mutex);
                 results     = generate_image(sd_ctx, &img_gen_params);
                 num_results = gen_params.batch_count;
+            }
+
+            // Upscale if requested (only works for single image result)
+            if (do_upscale && num_results == 1 && results != nullptr && results[0].data != nullptr && !ctx_params.esrgan_path.empty()) {
+                upscaler_ctx_t* upscaler_ctx = new_upscaler_ctx(ctx_params.esrgan_path.c_str(),
+                                                               ctx_params.offload_params_to_cpu,
+                                                               false,
+                                                               ctx_params.n_threads,
+                                                               128);  // default tile size
+                if (upscaler_ctx != nullptr) {
+                    int upscale_factor = get_upscale_factor(upscaler_ctx);
+                    if (upscale_factor <= 0) {
+                        upscale_factor = 2;  // default 2x
+                    }
+                    sd_image_t upscaled = upscale(upscaler_ctx, results[0], upscale_factor);
+                    free_results(results, num_results);
+                    results = (sd_image_t*)malloc(sizeof(sd_image_t));
+                    results[0] = upscaled;
+                    num_results = 1;
+                    free_upscaler_ctx(upscaler_ctx);
+                } else {
+                    LOG_WARN("failed to create upscaler context, returning original image");
+                }
+            }
+
+            // Handle direct binary response when output_filename is provided
+            if (!output_filename.empty() && num_results == 1 && results != nullptr && results[0].data != nullptr) {
+                auto image_bytes = write_image_to_vector(output_format == "jpeg" ? ImageFormat::JPEG : ImageFormat::PNG,
+                                                         results[0].data,
+                                                         results[0].width,
+                                                         results[0].height,
+                                                         results[0].channel,
+                                                         output_compression);
+                if (image_bytes.empty()) {
+                    LOG_ERROR("write image to mem failed");
+                    res.status = 500;
+                    res.set_content(R"({"error":"failed to encode image"})", "application/json");
+                } else {
+                    std::string content_type = output_format == "jpeg" ? "image/jpeg" : "image/png";
+                    std::string extension = output_format == "jpeg" ? "jpg" : "png";
+                    
+                    // Generate filename if not provided
+                    if (output_filename.empty()) {
+                        output_filename = "output_" + std::to_string(std::time(nullptr)) + "." + extension;
+                    }
+                    
+                    res.set_header("Content-Disposition", "attachment; filename=\"" + output_filename + "\"");
+                    res.set_content(std::string(reinterpret_cast<const char*>(image_bytes.data()), image_bytes.size()), content_type);
+                    res.status = 200;
+                }
+                free_results(results, num_results);
+                return;
             }
 
             for (int i = 0; i < num_results; i++) {
@@ -850,6 +910,11 @@ int main(int argc, const char** argv) {
             int clip_skip               = j.value("clip_skip", -1);
             std::string sampler_name    = j.value("sampler_name", "");
             std::string scheduler_name  = j.value("scheduler", "");
+            std::string response_format = j.value("response_format", "base64");
+            std::string output_format   = j.value("output_format", "png");
+            int output_compression       = j.value("output_compression", 100);
+            std::string output_filename = j.value("output_filename", "");
+            bool do_upscale             = j.value("upscale", false);
 
             auto bad = [&](const std::string& msg) {
                 res.status = 400;
@@ -875,6 +940,19 @@ int main(int argc, const char** argv) {
 
             if (prompt.empty()) {
                 return bad("prompt required");
+            }
+
+            if (response_format != "base64" && response_format != "url") {
+                return bad("response_format must be one of [base64, url]");
+            }
+            if (output_format != "png" && output_format != "jpeg") {
+                return bad("output_format must be one of [png, jpeg]");
+            }
+            if (output_compression > 100) {
+                output_compression = 100;
+            }
+            if (output_compression < 0) {
+                output_compression = 0;
             }
 
             std::vector<sd_lora_t> sd_loras;
@@ -1101,6 +1179,69 @@ int main(int argc, const char** argv) {
                 num_results = gen_params.batch_count;
             }
 
+            // Upscale if requested (only works for single image result)
+            if (do_upscale && num_results == 1 && results != nullptr && results[0].data != nullptr && !ctx_params.esrgan_path.empty()) {
+                upscaler_ctx_t* upscaler_ctx = new_upscaler_ctx(ctx_params.esrgan_path.c_str(),
+                                                               ctx_params.offload_params_to_cpu,
+                                                               false,
+                                                               ctx_params.n_threads,
+                                                               128);  // default tile size
+                if (upscaler_ctx != nullptr) {
+                    int upscale_factor = get_upscale_factor(upscaler_ctx);
+                    if (upscale_factor <= 0) {
+                        upscale_factor = 2;  // default 2x
+                    }
+                    sd_image_t upscaled = upscale(upscaler_ctx, results[0], upscale_factor);
+                    free_results(results, num_results);
+                    results = (sd_image_t*)malloc(sizeof(sd_image_t));
+                    results[0] = upscaled;
+                    num_results = 1;
+                    free_upscaler_ctx(upscaler_ctx);
+                } else {
+                    LOG_WARN("failed to create upscaler context, returning original image");
+                }
+            }
+
+            // Handle direct binary response when output_filename is provided
+            if (!output_filename.empty() && num_results == 1 && results != nullptr && results[0].data != nullptr) {
+                auto image_bytes = write_image_to_vector(output_format == "jpeg" ? ImageFormat::JPEG : ImageFormat::PNG,
+                                                         results[0].data,
+                                                         results[0].width,
+                                                         results[0].height,
+                                                         results[0].channel,
+                                                         output_compression);
+                free_results(results, num_results);
+
+                if (image_bytes.empty()) {
+                    LOG_ERROR("write image to mem failed");
+                    res.status = 500;
+                    res.set_content(R"({"error":"failed to encode image"})", "application/json");
+                } else {
+                    std::string content_type = output_format == "jpeg" ? "image/jpeg" : "image/png";
+                    std::string extension = output_format == "jpeg" ? "jpg" : "png";
+                    
+                    // Generate filename if not provided
+                    if (output_filename.empty()) {
+                        output_filename = "output_" + std::to_string(std::time(nullptr)) + "." + extension;
+                    }
+                    
+                    res.set_header("Content-Disposition", "attachment; filename=\"" + output_filename + "\"");
+                    res.set_content(std::string(reinterpret_cast<const char*>(image_bytes.data()), image_bytes.size()), content_type);
+                    res.status = 200;
+                }
+
+                if (init_image.data) {
+                    stbi_image_free(init_image.data);
+                }
+                if (mask_image.data && mask_data.empty()) {
+                    stbi_image_free(mask_image.data);
+                }
+                for (auto ref_image : ref_images) {
+                    stbi_image_free(ref_image.data);
+                }
+                return;
+            }
+
             json out;
             out["images"]     = json::array();
             out["parameters"] = j;  // TODO should return changed defaults
@@ -1111,11 +1252,12 @@ int main(int argc, const char** argv) {
                     continue;
                 }
 
-                auto image_bytes = write_image_to_vector(ImageFormat::PNG,
+                auto image_bytes = write_image_to_vector(output_format == "jpeg" ? ImageFormat::JPEG : ImageFormat::PNG,
                                                          results[i].data,
                                                          results[i].width,
                                                          results[i].height,
-                                                         results[i].channel);
+                                                         results[i].channel,
+                                                         output_compression);
 
                 if (image_bytes.empty()) {
                     LOG_ERROR("write image to mem failed");
