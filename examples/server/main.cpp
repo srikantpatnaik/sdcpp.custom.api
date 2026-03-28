@@ -901,18 +901,18 @@ int main(int argc, const char** argv) {
 
             std::string prompt          = j.value("prompt", "");
             std::string negative_prompt = j.value("negative_prompt", "");
-            int width                   = j.value("width", 512);
-            int height                  = j.value("height", 512);
-            int steps                   = j.value("steps", default_gen_params.sample_params.sample_steps);
-            float cfg_scale             = j.value("cfg_scale", default_gen_params.sample_params.guidance.txt_cfg);
+            int width                   = j.value("width", 1024);
+            int height                  = j.value("height", 600);
+            int steps                   = j.value("steps", 4);
+            float cfg_scale             = j.value("cfg_scale", 1.0f);
             int64_t seed                = j.value("seed", -1);
             int batch_size              = j.value("batch_size", 1);
             int clip_skip               = j.value("clip_skip", -1);
             std::string sampler_name    = j.value("sampler_name", "");
             std::string scheduler_name  = j.value("scheduler", "");
             std::string response_format = j.value("response_format", "base64");
-            std::string output_format   = j.value("output_format", "png");
-            int output_compression       = j.value("output_compression", 100);
+            std::string output_format   = j.value("output_format", "jpeg");
+            int output_compression       = j.value("output_compression", 90);
             std::string output_filename = j.value("output_filename", "");
             bool do_upscale             = j.value("upscale", false);
 

@@ -79,18 +79,18 @@ Generate images using AUTOMATIC1111/Forge compatible API.
 |-----------|------|----------|---------|-------------|
 | `prompt` | string | Yes | - | Text description of the desired image |
 | `negative_prompt` | string | No | "" | Negative prompt |
-| `width` | integer | No | 512 | Image width |
-| `height` | integer | No | 512 | Image height |
-| `steps` | integer | No | 20 | Number of sampling steps |
-| `cfg_scale` | float | No | 7.0 | CFG scale for guidance |
+| `width` | integer | No | 1024 | Image width |
+| `height` | integer | No | 600 | Image height |
+| `steps` | integer | No | 4 | Number of sampling steps |
+| `cfg_scale` | float | No | 1.0 | CFG scale for guidance |
 | `seed` | integer | No | -1 | Random seed (-1 for random) |
 | `batch_size` | integer | No | 1 | Number of images per batch (1-8) |
 | `clip_skip` | integer | No | -1 | CLIP skip value |
 | `sampler_name` | string | No | "" | Sampler name (euler, euler_a, dpm++_2m, etc.) |
 | `scheduler` | string | No | "" | Scheduler name |
 | `response_format` | string | No | "base64" | Response format: "base64" or "url" |
-| `output_format` | string | No | "png" | Output format: "png" or "jpeg" |
-| `output_compression` | integer | No | 100 | JPEG compression quality (0-100) |
+| `output_format` | string | No | "jpeg" | Output format: "png" or "jpeg" |
+| `output_compression` | integer | No | 90 | JPEG compression quality (0-100) |
 | `output_filename` | string | No | - | Custom filename for download |
 | `upscale` | boolean | No | false | Enable 2x upscaling |
 | `lora` | array | No | - | LoRA configuration array |
