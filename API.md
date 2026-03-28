@@ -112,15 +112,21 @@ Generate images using AUTOMATIC1111/Forge compatible API.
 #### Example Request
 
 ```bash
+# With all defaults (1024x600, steps=4, cfg=1, jpeg)
+curl -X POST http://localhost:1234/sdapi/v1/txt2img \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "a cat"}'
+
+# With custom parameters
 curl -X POST http://localhost:1234/sdapi/v1/txt2img \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a cat sitting on a table",
     "negative_prompt": "blurry, low quality",
-    "width": 512,
-    "height": 512,
-    "steps": 25,
-    "cfg_scale": 7.5,
+    "width": 1024,
+    "height": 600,
+    "steps": 4,
+    "cfg_scale": 1.0,
     "seed": 42,
     "sampler_name": "euler_a"
   }'
@@ -168,8 +174,7 @@ curl -X POST http://localhost:1234/sdapi/v1/img2img \
   -d '{
     "prompt": "a red cat",
     "init_images": ["base64_encoded_image"],
-    "denoising_strength": 0.7,
-    "steps": 20
+    "denoising_strength": 0.7
   }'
 ```
 

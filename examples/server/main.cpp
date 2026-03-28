@@ -1041,8 +1041,8 @@ int main(int argc, const char** argv) {
 
             // re-read to avoid applying 512 as default before the provided
             // images and/or server command-line
-            gen_params.width  = j.value("width", -1);
-            gen_params.height = j.value("height", -1);
+            gen_params.width  = j.value("width", 1024);
+            gen_params.height = j.value("height", 600);
 
             LOG_DEBUG("%s\n", gen_params.to_string().c_str());
 
